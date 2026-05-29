@@ -1,3 +1,5 @@
+---@diagnostic disable: undefined-global
+
 ------------------------------------------------------------------------
 -- BeamMP Server Plugin – Countdown & Timer Commands
 --
@@ -12,6 +14,7 @@
 --   /timer <minutes>   Long timer  (required arg, max 180 min).
 --   /time              Show remaining time on active timers.
 --   /stop              Cancel all running timers.
+--   /players           Show connected players and their IDs.
 --
 -- Behaviour notes:
 --   - Countdown announces every 5 s; every 1 s for the final 10 s.
@@ -54,6 +57,28 @@ local function formatHMS(seconds)
   end
 end
 
+local function getSortedPlayers()
+  local entries = {}
+  local players = MP.GetPlayers() or {}
+  for playerId, playerName in pairs(players) do
+    entries[#entries + 1] = {
+      id = tostring(playerId),
+      name = playerName,
+    }
+  end
+
+  table.sort(entries, function(a, b)
+    local aNum = tonumber(a.id)
+    local bNum = tonumber(b.id)
+    if aNum and bNum and aNum ~= bNum then
+      return aNum < bNum
+    end
+    return a.id < b.id
+  end)
+
+  return entries
+end
+
 --- Create an event timer only if one with the same name isn't already running.
 local function ensureEventTimer(name, intervalMs)
   if not timersRunning[name] then
@@ -81,11 +106,11 @@ function countdown_handler()
     end
     return
   end
+  activeCountdown = activeCountdown - 1
   if activeCountdown > 0 then
     if activeCountdown <= FINAL_COUNTDOWN_THRESHOLD or activeCountdown % 5 == 0 then
       MP.SendChatMessage(-1, "Countdown: " .. activeCountdown .. "s")
     end
-    activeCountdown = activeCountdown - 1
   else
     MP.SendChatMessage(-1, "Countdown finished!")
     activeCountdown = nil
@@ -133,23 +158,40 @@ MP.RegisterEvent("timerUpdateEvent", "timer_update_handler")
 
 -- ── Command Handlers ──────────────────────────────────────────────────
 local commands = {}
+local delegatedCommands = {
+  clearwins = true,
+  removew = true,
+  scoreboard = true,
+  win = true,
+}
 
 commands.help = function(sender)
-  MP.SendChatMessage(sender, "/ss (5s) | /start [sec] | /timer <min> | /time | /stop")
+  MP.SendChatMessage(sender, "/ss (5s) | /start [sec] | /timer <min> | /time | /stop | /players")
+  MP.SendChatMessage(sender, "/win <name> | /removew <name> | /scoreboard | /clearwins")
 end
 
-commands.start = function(_, args)
+commands.players = function(sender)
+  local players = getSortedPlayers()
+  local suffix = #players == 1 and " player" or " players"
+  MP.SendChatMessage(sender, "There are currently " .. #players .. suffix .. " on the server.")
+
+  for _, player in ipairs(players) do
+    MP.SendChatMessage(sender, "ID: " .. player.id .. " Name: " .. player.name)
+  end
+end
+
+commands.start = function(sender, args)
   if activeCountdown then
-    MP.SendChatMessage(-1, "A countdown is already running.")
+    MP.SendChatMessage(sender, "A countdown is already running.")
     return
   end
   local v = tonumber(args[1] or "10")
   if not v or v <= 0 then
-    MP.SendChatMessage(-1, "Usage: /start [seconds]")
+    MP.SendChatMessage(sender, "Usage: /start [seconds]")
     return
   end
   if v > MAX_COUNTDOWN_SECONDS then
-    MP.SendChatMessage(-1, "Max countdown is " .. MAX_COUNTDOWN_SECONDS .. " seconds.")
+    MP.SendChatMessage(sender, "Max countdown is " .. MAX_COUNTDOWN_SECONDS .. " seconds.")
     return
   end
   activeCountdown = math.floor(v)
@@ -157,9 +199,9 @@ commands.start = function(_, args)
   ensureEventTimer("countdownEvent", 1000)
 end
 
-commands.ss = function()
+commands.ss = function(sender)
   if activeCountdown then
-    MP.SendChatMessage(-1, "A countdown is already running.")
+    MP.SendChatMessage(sender, "A countdown is already running.")
     return
   end
   activeCountdown = 5
@@ -167,18 +209,18 @@ commands.ss = function()
   ensureEventTimer("countdownEvent", 1000)
 end
 
-commands.timer = function(_, args)
+commands.timer = function(sender, args)
   local m = tonumber(args[1] or "")
   if not m or m <= 0 then
-    MP.SendChatMessage(-1, "Usage: /timer <minutes>")
+    MP.SendChatMessage(sender, "Usage: /timer <minutes>")
     return
   end
   if m > MAX_TIMER_MINUTES then
-    MP.SendChatMessage(-1, "Max timer is " .. MAX_TIMER_MINUTES .. " minutes.")
+    MP.SendChatMessage(sender, "Max timer is " .. MAX_TIMER_MINUTES .. " minutes.")
     return
   end
   if activeTimerEnd then
-    MP.SendChatMessage(-1, "A timer is already running.")
+    MP.SendChatMessage(sender, "A timer is already running.")
     return
   end
   activeTimerEnd = os.time() + (m * 60)
@@ -187,7 +229,7 @@ commands.timer = function(_, args)
   ensureEventTimer("timerUpdateEvent", 1000)
 end
 
-commands.time = function()
+commands.time = function(sender)
   local parts = {}
   if activeCountdown then
     parts[#parts+1] = "Countdown: " .. activeCountdown .. "s"
@@ -197,15 +239,15 @@ commands.time = function()
     parts[#parts+1] = "Timer: " .. formatHMS(remaining)
   end
   if #parts == 0 then
-    MP.SendChatMessage(-1, "No active timers.")
+    MP.SendChatMessage(sender, "No active timers.")
   else
-    MP.SendChatMessage(-1, table.concat(parts, " | "))
+    MP.SendChatMessage(sender, table.concat(parts, " | "))
   end
 end
 
-commands.stop = function()
+commands.stop = function(sender)
   if not (activeCountdown or activeTimerEnd) then
-    MP.SendChatMessage(-1, "No active timers.")
+    MP.SendChatMessage(sender, "No active timers.")
     return
   end
   stopAll()
@@ -214,7 +256,7 @@ end
 
 -- ── Chat Dispatcher ───────────────────────────────────────────────────
 function chat_handler(sender_id, sender_name, message)
-  if string.sub(message, 1, 1) ~= "/" then return end
+  if string.sub(message, 1, 1) ~= "/" then return 0 end
   local parts = split(message)
   local cmd = string.lower(string.sub(parts[1], 2)) -- remove '/'
   local args = {}
@@ -223,8 +265,14 @@ function chat_handler(sender_id, sender_name, message)
   local handler = commands[cmd]
   if handler then
     handler(sender_id, args)
+    return 1
+  end
+
+  if delegatedCommands[cmd] then
+    return 0
   else
     MP.SendChatMessage(sender_id, "Unknown command. Try /help")
+    return 1
   end
 end
 

@@ -1,3 +1,5 @@
+---@diagnostic disable: undefined-global
+
 ------------------------------------------------------------------------
 -- BeamMP Server Plugin – Auto-Greeter
 --

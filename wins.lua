@@ -1,3 +1,5 @@
+---@diagnostic disable: undefined-global
+
 ------------------------------------------------------------------------
 -- BeamMP Server Plugin – Win Tracker
 --
@@ -17,7 +19,16 @@
 ------------------------------------------------------------------------
 
 -- ── Persistence ─────────────────────────────────────────────────────
-local WINS_FILE = "wins_data.lua"
+local function resolvePluginDir()
+  local source = debug.getinfo(1, "S").source or ""
+  if source:sub(1, 1) == "@" then
+    source = source:sub(2)
+  end
+  local normalized = source:gsub("\\", "/")
+  return normalized:match("^(.*)/[^/]+$") or "."
+end
+
+local WINS_FILE = resolvePluginDir() .. "/wins_data.lua"
 
 --- Load the wins table from disk. Returns an empty table on failure.
 local function loadWins()
@@ -171,7 +182,7 @@ end
 
 -- ── Chat Dispatcher ─────────────────────────────────────────────────
 function wins_chat_handler(sender_id, sender_name, message)
-  if message:sub(1, 1) ~= "/" then return end
+  if message:sub(1, 1) ~= "/" then return 0 end
 
   local parts = split(message)
   local cmd = parts[1]:sub(2):lower()   -- strip leading "/"
@@ -181,9 +192,11 @@ function wins_chat_handler(sender_id, sender_name, message)
   local handler = winsCommands[cmd]
   if handler then
     handler(sender_id, args)
+    return 1
   end
   -- Unknown commands are intentionally ignored here so the main
   -- script's dispatcher can handle them instead.
+  return 0
 end
 
 MP.RegisterEvent("onChatMessage", "wins_chat_handler")

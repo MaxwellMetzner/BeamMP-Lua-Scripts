@@ -36,6 +36,8 @@ Commands
   /time              Display the remaining time on any active countdown
                      and/or timer.
   /stop              Cancel all running countdowns and timers immediately.
+  /players           Show the current player count and each connected
+                     player's BeamMP ID and name to the requester.
 
 Behaviour
 ---------
@@ -53,6 +55,8 @@ Behaviour
   - Duplicate internal event-timers are guarded against automatically.
   - All limits (max seconds, max minutes, announce interval, final
     threshold) are configurable constants at the top of the script.
+  - /players replies only to the caller so large lobbies do not get
+    extra chat spam.
   - An unknown "/" command returns a helpful hint to the sender only.
 
 =========================================================================
