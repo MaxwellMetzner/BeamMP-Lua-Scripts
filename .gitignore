@@ -1,0 +1,7 @@
+# BeamMP runtime scoreboard data
+/data/wins.json
+/data/wins.json.bak
+/data/wins.json.tmp
+/data/wins.json.old
+/data/wins_data.lua.migrated
+/wins_data.lua

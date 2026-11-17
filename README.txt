@@ -1,107 +1,76 @@
-BeamMP Server – Lua Plugin Collection
-=======================================
+BeamMP Server - Race Utilities
+==============================
 
 Overview
 --------
-A set of Lua server-side plugins for BeamMP that add useful chat commands
-for running races and events. All scripts are loaded automatically by the
-BeamMP server from the same plugin folder.
-
-Scripts included:
-  script.lua   – Countdown & timer commands.
-  greeter.lua  – Auto-greets players when they join.
-  wins.lua     – Per-player win tracker with scoreboard.
+This plugin provides race countdowns, timers, player greetings, a player
+list, and a persistent win scoreboard. Commands are registered in one
+place and dispatched by one onChatMessage handler.
 
 Installation
 ------------
-1. In your BeamMP server directory, navigate to:
-       Resources/Server/
-2. Create a new folder (e.g. "maxscript") inside that path.
-3. Drop all .lua files into the new folder.
-4. Restart (or start) the BeamMP server – every .lua file in the
-   folder is loaded automatically.
+1. Open Resources/Server in your BeamMP server directory.
+2. Create a plugin folder, for example Resources/Server/race-utilities.
+3. Copy script.lua into that folder.
+4. Start or restart the BeamMP server.
 
-=========================================================================
-script.lua – Countdown & Timer
-=========================================================================
+When upgrading from the previous multi-file version, replace script.lua
+and remove greeter.lua and wins.lua. Their behavior is now included in
+script.lua.
 
 Commands
 --------
-  /help              List every available command with a short summary.
-  /ss                Quick-start a 5-second countdown.
-  /start [seconds]   Start a countdown. Defaults to 10 s if no value is
-                     given. Maximum allowed value is 3600 s (1 hour).
-  /timer <minutes>   Start a long-running timer. The <minutes> argument is
-                     required. Maximum allowed value is 180 min (3 hours).
-  /time              Display the remaining time on any active countdown
-                     and/or timer.
-  /stop              Cancel all running countdowns and timers immediately.
-  /players           Show the current player count and each connected
-                     player's BeamMP ID and name to the requester.
+  /help [command]    List commands or describe one command.
+  /ss                Start a five-second countdown.
+  /start [seconds]   Start a countdown; defaults to 10 seconds.
+  /timer <minutes>   Start a long-running timer.
+  /time              Show remaining countdown and timer time.
+  /stop              Stop all countdowns and timers.
+  /players           Privately list connected players and server IDs.
+  /win <name>        Award a win using a unique name prefix.
+  /removew <name>    Remove a win using a unique name prefix.
+  /scoreboard        Broadcast the current standings.
+  /clearwins         Reset the scoreboard.
 
-Behaviour
----------
-* Countdown (/ss, /start)
-  - Announces every 5 seconds while running.
-  - Switches to every-second announcements for the final 10 seconds.
-  - Prevents starting a second countdown while one is already active.
+Countdowns and timers
+---------------------
+Countdowns use an absolute end time, so delayed or skipped BeamMP timer
+callbacks do not make the countdown drift. Countdown values and timer
+minutes must be positive whole numbers.
 
-* Timer (/timer)
-  - Announces remaining time in human-readable H:M:S format.
-  - Announcements are bucketed every 15 seconds to avoid chat spam.
-  - Prevents starting a second timer while one is already active.
+The default limits are:
+  Countdown: 3600 seconds
+  Timer:     180 minutes
 
-* General
-  - Duplicate internal event-timers are guarded against automatically.
-  - All limits (max seconds, max minutes, announce interval, final
-    threshold) are configurable constants at the top of the script.
-  - /players replies only to the caller so large lobbies do not get
-    extra chat spam.
-  - An unknown "/" command returns a helpful hint to the sender only.
+These and the announcement intervals can be changed in the CONFIG table
+at the top of script.lua.
 
-=========================================================================
-greeter.lua – Auto-Greeter
-=========================================================================
+Scoreboard persistence
+----------------------
+The scoreboard is stored as versioned JSON:
 
-Behaviour
----------
-  When a player joins the server, a message is broadcast to all players:
+  data/wins.json
 
-      Hello <playername>!
+Before replacing the primary file, the plugin writes and flushes a
+temporary file, stages the previous file for rollback, and installs the
+new file with a rename. It then refreshes a known-good backup at:
 
-  No commands – fully automatic.
+  data/wins.json.bak
 
-=========================================================================
-wins.lua – Win Tracker & Scoreboard
-=========================================================================
+If the primary file is missing or invalid, the backup is loaded. Invalid
+records, read/write failures, command failures, and migration problems
+are written to the BeamMP server log.
 
-Commands
---------
-  /win <name>        Award a win to a player.
-  /removew <name>    Remove a win from a player.
-  /scoreboard        Display the current win standings.
-  /clearwins         Reset the entire scoreboard to zero.
+The old wins_data.lua format is migrated automatically without executing
+the file. After a successful migration, it is moved to:
 
-Name Matching
+  data/wins_data.lua.migrated
+
+If a scoreboard change cannot be saved, the in-memory change is rolled
+back and the command sender is notified.
+
+Name matching
 -------------
-  You don't need to type a player's full name. Type just enough
-  characters to uniquely match them (case-insensitive).
-
-  Examples (if "MaxwellSilver" is the only name starting with "max"):
-      /win max          →  awards a win to MaxwellSilver
-      /win Maxwell      →  same result
-      /win MaxwellSilver → also works
-
-  If the partial name matches more than one player, the command will
-  list the matches and ask you to be more specific.
-
-  Names are matched against both currently connected players AND anyone
-  who already has wins on the scoreboard (so you can award offline
-  players too).
-
-Behaviour
----------
-  - After every /win or /removew the full scoreboard is announced.
-  - Wins are saved to  wins_data.lua  and persist across server
-    restarts.
-  - /clearwins wipes the saved file as well.
+Win commands match names case-insensitively. An exact match takes
+priority; otherwise, a unique prefix can be used. Matching includes
+connected players and names already present on the scoreboard.
